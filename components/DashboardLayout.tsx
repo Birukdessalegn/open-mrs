@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   LayoutDashboard,
+  Monitor,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,8 +30,14 @@ const navigation = [
   { name: 'Appointments', href: '/dashboard/appointments', icon: Calendar },
   { name: 'Visits & EMR', href: '/dashboard/visits', icon: FileText },
   { name: 'Laboratory', href: '/dashboard/laboratory', icon: TestTube },
+  { name: 'Lab Orders', href: '/dashboard/laboratory/orders', icon: TestTube },
+  { name: 'Lab Tests', href: '/dashboard/laboratory/tests', icon: TestTube },
   { name: 'Billing', href: '/dashboard/billing', icon: Receipt },
+  { name: 'Queue Management', href: '/dashboard/queue', icon: Users },
+  { name: 'Queue Display', href: '/dashboard/queue/display', icon: Monitor },
   { name: 'Pharmacy', href: '/dashboard/pharmacy', icon: Package },
+  { name: 'Prescriptions', href: '/dashboard/pharmacy/prescriptions', icon: Package },
+  { name: 'Stock Management', href: '/dashboard/pharmacy/stock', icon: Package },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -39,6 +46,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { profile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Filter navigation based on user role
+  const getFilteredNavigation = () => {
+    if (!profile) return navigation;
+    
+    const rolePermissions: Record<string, string[]> = {
+      'Admin': ['Dashboard', 'Patients', 'Appointments', 'Visits & EMR', 'Laboratory', 'Lab Tests', 'Billing', 'Queue Management', 'Queue Display', 'Pharmacy', 'Prescriptions', 'Settings'],
+      'Doctor': ['Dashboard', 'Patients', 'Appointments', 'Visits & EMR', 'Laboratory', 'Lab Orders', 'Queue Display', 'Pharmacy'],
+      'Lab Tech': ['Dashboard', 'Laboratory', 'Lab Tests', 'Queue Display'],
+      'Pharmacist': ['Dashboard', 'Pharmacy', 'Prescriptions', 'Stock Management', 'Queue Display'],
+      'Receptionist': ['Dashboard', 'Patients', 'Appointments', 'Billing', 'Queue Management', 'Queue Display'],
+    };
+
+    const allowedPages = rolePermissions[profile.role] || [];
+    return navigation.filter(item => allowedPages.includes(item.name));
+  };
 
   const handleSignOut = async () => {
     try {
@@ -89,7 +112,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         )}
       >
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => {
+          {getFilteredNavigation().map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link

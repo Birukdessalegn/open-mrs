@@ -5,54 +5,50 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TestTube, CheckCircle } from 'lucide-react';
+import { Search, TestTube, User, Calendar, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 
 type LabOrder = Database['public']['Tables']['lab_orders']['Row'] & {
   patients: { first_name: string; last_name: string; medical_id: string } | null;
   profiles: { full_name: string } | null;
   lab_order_items: (Database['public']['Tables']['lab_order_items']['Row'] & {
-    lab_tests: { test_name: string; normal_range: string | null } | null;
+    lab_tests: { test_name: string; test_code: string; normal_range: string | null } | null;
   })[];
 };
 
-type Patient = Database['public']['Tables']['patients']['Row'];
 type LabTest = Database['public']['Tables']['lab_tests']['Row'];
 
 export default function LaboratoryPage() {
-  const { profile } = useAuth();
-  const [orders, setOrders] = useState<LabOrder[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [tests, setTests] = useState<LabTest[]>([]);
+  const { profile, user, loading: authLoading } = useAuth();
+  const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
+  const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orderDialogOpen, setOrderDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [orderFormData, setOrderFormData] = useState({
-    patient_id: '',
-    test_ids: [] as string[],
-    notes: '',
-  });
-  const [resultFormData, setResultFormData] = useState({
+  const [selectedOrderItem, setSelectedOrderItem] = useState<any>(null);
+  const [resultData, setResultData] = useState({
     result: '',
+    notes: '',
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading && user && profile) {
+      loadData();
+    }
+  }, [authLoading, user, profile]);
 
   async function loadData() {
     try {
-      const [ordersResult, patientsResult, testsResult] = await Promise.all([
+      const [ordersResult, testsResult] = await Promise.all([
         supabase
           .from('lab_orders')
           .select(`
@@ -61,21 +57,22 @@ export default function LaboratoryPage() {
             profiles(full_name),
             lab_order_items(
               *,
-              lab_tests(test_name, normal_range)
+              lab_tests(test_name, test_code, normal_range)
             )
           `)
           .order('order_date', { ascending: false }),
-        supabase.from('patients').select('*').order('first_name'),
-        supabase.from('lab_tests').select('*').eq('active', true).order('test_name'),
+        supabase
+          .from('lab_tests')
+          .select('*')
+          .eq('active', true)
+          .order('test_name'),
       ]);
 
       if (ordersResult.error) throw ordersResult.error;
-      if (patientsResult.error) throw patientsResult.error;
       if (testsResult.error) throw testsResult.error;
 
-      setOrders(ordersResult.data || []);
-      setPatients(patientsResult.data || []);
-      setTests(testsResult.data || []);
+      setLabOrders(ordersResult.data || []);
+      setLabTests(testsResult.data || []);
     } catch (error: any) {
       toast.error('Failed to load data');
     } finally {
@@ -83,90 +80,92 @@ export default function LaboratoryPage() {
     }
   }
 
-  async function handleOrderSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function updateOrderStatus(orderId: string, status: string) {
     try {
-      if (!profile?.id) throw new Error('User not authenticated');
-
-      const { data: orderData, error: orderError } = await supabase
+      const { error } = await supabase
         .from('lab_orders')
-        .insert({
-          patient_id: orderFormData.patient_id,
-          ordered_by: profile.id,
-          notes: orderFormData.notes,
-        })
-        .select()
-        .single();
+        .update({ status })
+        .eq('id', orderId);
 
-      if (orderError) throw orderError;
+      if (error) throw error;
 
-      const orderItems = orderFormData.test_ids.map((test_id) => ({
-        lab_order_id: orderData.id,
-        lab_test_id: test_id,
-      }));
-
-      const { error: itemsError } = await supabase.from('lab_order_items').insert(orderItems);
-
-      if (itemsError) throw itemsError;
-
-      toast.success('Lab order created successfully');
-      setOrderDialogOpen(false);
-      setOrderFormData({ patient_id: '', test_ids: [], notes: '' });
+      toast.success('Order status updated successfully');
       loadData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create order');
+      toast.error('Failed to update order status');
     }
   }
 
-  async function handleResultSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitTestResult() {
     try {
-      if (!profile?.id) throw new Error('User not authenticated');
+      if (!selectedOrderItem || !profile?.id) {
+        toast.error('Invalid data');
+        return;
+      }
 
       const { error } = await supabase
         .from('lab_order_items')
         .update({
-          result: resultFormData.result,
+          result: resultData.result,
           result_date: new Date().toISOString(),
           performed_by: profile.id,
         })
-        .eq('id', selectedItem.id);
+        .eq('id', selectedOrderItem.id);
 
       if (error) throw error;
 
-      const { data: itemsData } = await supabase
-        .from('lab_order_items')
-        .select('result')
-        .eq('lab_order_id', selectedItem.lab_order_id)
-        .is('result', null);
-
-      if (itemsData && itemsData.length === 0) {
-        await supabase
-          .from('lab_orders')
-          .update({ status: 'Completed' })
-          .eq('id', selectedItem.lab_order_id);
-      }
-
-      toast.success('Result recorded successfully');
+      toast.success('Test result submitted successfully');
       setResultDialogOpen(false);
-      setSelectedItem(null);
-      setResultFormData({ result: '' });
+      setSelectedOrderItem(null);
+      setResultData({ result: '', notes: '' });
       loadData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to record result');
+      toast.error('Failed to submit test result');
     }
   }
 
-  const toggleTest = (testId: string) => {
-    setOrderFormData((prev) => ({
-      ...prev,
-      test_ids: prev.test_ids.includes(testId)
-        ? prev.test_ids.filter((id) => id !== testId)
-        : [...prev.test_ids, testId],
-    }));
+  const filteredOrders = labOrders.filter((order) => {
+    const matchesSearch = 
+      order.patients?.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.patients?.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.patients?.medical_id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'Completed':
+        return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case 'In Progress':
+        return <Clock className="h-4 w-4 text-blue-600" />;
+      case 'Pending':
+        return <AlertCircle className="h-4 w-4 text-orange-600" />;
+      case 'Cancelled':
+        return <AlertCircle className="h-4 w-4 text-red-600" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-600" />;
+    }
   };
 
-  if (loading) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Completed':
+        return 'bg-green-100 text-green-800';
+      case 'In Progress':
+        return 'bg-blue-100 text-blue-800';
+      case 'Pending':
+        return 'bg-orange-100 text-orange-800';
+      case 'Cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -174,238 +173,226 @@ export default function LaboratoryPage() {
     );
   }
 
-  const pendingOrders = orders.filter((o) => o.status === 'Pending' || o.status === 'In Progress');
-  const completedOrders = orders.filter((o) => o.status === 'Completed');
+  if (!user || !profile) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600">Please log in to access this page.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Laboratory</h1>
-          <p className="text-slate-600 mt-1">Manage lab test orders and results</p>
-        </div>
-        <Dialog open={orderDialogOpen} onOpenChange={setOrderDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Order
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Lab Order</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleOrderSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="patient_id">Patient *</Label>
-                <Select
-                  value={orderFormData.patient_id}
-                  onValueChange={(value) => setOrderFormData({ ...orderFormData, patient_id: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select patient" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map((patient) => (
-                      <SelectItem key={patient.id} value={patient.id}>
-                        {patient.first_name} {patient.last_name} - {patient.medical_id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Select Tests *</Label>
-                <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto border rounded-md p-3">
-                  {tests.map((test) => (
-                    <div
-                      key={test.id}
-                      className="flex items-start gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer"
-                      onClick={() => toggleTest(test.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={orderFormData.test_ids.includes(test.id)}
-                        onChange={() => toggleTest(test.id)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium">{test.test_name}</div>
-                        <div className="text-xs text-slate-500">{test.description}</div>
-                      </div>
-                      <div className="text-sm font-semibold">${test.price}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={orderFormData.notes}
-                  onChange={(e) => setOrderFormData({ ...orderFormData, notes: e.target.value })}
-                  placeholder="Special instructions or notes"
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={orderFormData.test_ids.length === 0}>
-                Create Order
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900">Laboratory Management</h1>
+        <p className="text-slate-600 mt-1">Manage lab orders and test results</p>
       </div>
 
-      <Tabs defaultValue="pending">
-        <TabsList>
-          <TabsTrigger value="pending">
-            Pending Orders ({pendingOrders.length})
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Completed ({completedOrders.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="pending" className="space-y-4">
-          {pendingOrders.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search by patient name or medical ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="In Progress">In Progress</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {filteredOrders.length === 0 ? (
+              <div className="text-center py-12">
                 <TestTube className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                <p className="text-slate-500">No pending orders</p>
-              </CardContent>
-            </Card>
-          ) : (
-            pendingOrders.map((order) => (
-              <Card key={order.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">
-                        {order.patients?.first_name} {order.patients?.last_name}
-                      </CardTitle>
-                      <p className="text-sm text-slate-500 mt-1">
-                        Medical ID: {order.patients?.medical_id} | Ordered by: {order.profiles?.full_name}
-                      </p>
-                    </div>
-                    <Badge variant={order.status === 'Pending' ? 'secondary' : 'default'}>
-                      {order.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <span className="font-semibold text-sm">Order Date:</span>
-                    <p className="text-slate-700">{format(new Date(order.order_date), 'MMM dd, yyyy HH:mm')}</p>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-sm">Tests:</span>
-                    <div className="mt-2 space-y-2">
-                      {order.lab_order_items.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
-                          <div>
-                            <div className="font-medium">{item.lab_tests?.test_name}</div>
-                            {item.result ? (
-                              <div className="text-sm text-green-600">Result: {item.result}</div>
-                            ) : (
-                              <div className="text-sm text-orange-600">Awaiting result</div>
-                            )}
+                <p className="text-slate-500">No lab orders found</p>
+              </div>
+            ) : (
+              filteredOrders.map((order) => (
+                <Card key={order.id} className="border-l-4 border-l-blue-500">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <TestTube className="h-5 w-5 text-blue-600" />
+                          Lab Order #{order.id.slice(-8)}
+                        </CardTitle>
+                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4" />
+                            {order.patients?.first_name} {order.patients?.last_name}
                           </div>
-                          {!item.result && profile?.role === 'Lab Tech' && (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setSelectedItem({ ...item, lab_order_id: order.id });
-                                setResultDialogOpen(true);
-                              }}
-                            >
-                              Enter Result
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            {order.patients?.medical_id}
+                          </div>
+                          <div>
+                            Ordered by: {order.profiles?.full_name}
+                          </div>
                         </div>
-                      ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className={getStatusColor(order.status)}>
+                          {getStatusIcon(order.status)}
+                          <span className="ml-1">{order.status}</span>
+                        </Badge>
+                        <span className="text-sm text-slate-500">
+                          {format(new Date(order.order_date), 'MMM dd, yyyy')}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="completed" className="space-y-4">
-          {completedOrders.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <CheckCircle className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                <p className="text-slate-500">No completed orders</p>
-              </CardContent>
-            </Card>
-          ) : (
-            completedOrders.map((order) => (
-              <Card key={order.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     <div>
-                      <CardTitle className="text-lg">
-                        {order.patients?.first_name} {order.patients?.last_name}
-                      </CardTitle>
-                      <p className="text-sm text-slate-500 mt-1">
-                        Medical ID: {order.patients?.medical_id}
-                      </p>
-                    </div>
-                    <Badge className="bg-green-600">Completed</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <span className="font-semibold text-sm">Tests & Results:</span>
-                    <div className="mt-2 space-y-2">
-                      {order.lab_order_items.map((item) => (
-                        <div key={item.id} className="p-3 bg-slate-50 rounded">
-                          <div className="font-medium">{item.lab_tests?.test_name}</div>
-                          <div className="text-sm text-slate-600 mt-1">Result: {item.result}</div>
-                          {item.lab_tests?.normal_range && (
-                            <div className="text-xs text-slate-500 mt-1">
-                              Normal Range: {item.lab_tests.normal_range}
+                      <h4 className="font-medium text-slate-900 mb-2">Tests Ordered:</h4>
+                      <div className="space-y-2">
+                        {order.lab_order_items.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div>
+                              <div className="font-medium">{item.lab_tests?.test_name}</div>
+                              <div className="text-sm text-slate-600">
+                                Code: {item.lab_tests?.test_code}
+                                {item.lab_tests?.normal_range && (
+                                  <span className="ml-2">Normal: {item.lab_tests.normal_range}</span>
+                                )}
+                              </div>
+                              {item.result && (
+                                <div className="text-sm mt-1">
+                                  <span className="font-medium">Result: </span>
+                                  <span className="text-green-700">{item.result}</span>
+                                  {item.result_date && (
+                                    <span className="text-slate-500 ml-2">
+                                      ({format(new Date(item.result_date), 'MMM dd, yyyy HH:mm')})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ))}
+                            <div className="flex items-center gap-2">
+                              {!item.result ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedOrderItem(item);
+                                    setResultDialogOpen(true);
+                                  }}
+                                >
+                                  Enter Result
+                                </Button>
+                              ) : (
+                                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                  Completed
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-      </Tabs>
 
+                    {order.notes && (
+                      <div>
+                        <span className="font-medium text-slate-900">Notes:</span>
+                        <p className="text-slate-700 mt-1">{order.notes}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      {order.status === 'Pending' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateOrderStatus(order.id, 'In Progress')}
+                        >
+                          Start Processing
+                        </Button>
+                      )}
+                      {order.status === 'In Progress' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateOrderStatus(order.id, 'Completed')}
+                        >
+                          Mark Complete
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Result Entry Dialog */}
       <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Enter Test Result</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleResultSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Test Name</Label>
-              <Input value={selectedItem?.lab_tests?.test_name || ''} disabled />
+          {selectedOrderItem && (
+            <div className="space-y-4">
+              <div>
+                <Label>Test: {selectedOrderItem.lab_tests?.test_name}</Label>
+                <p className="text-sm text-slate-600">
+                  Patient: {labOrders.find(o => o.lab_order_items.some(item => item.id === selectedOrderItem.id))?.patients?.first_name} {labOrders.find(o => o.lab_order_items.some(item => item.id === selectedOrderItem.id))?.patients?.last_name}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="result">Test Result *</Label>
+                <Input
+                  id="result"
+                  value={resultData.result}
+                  onChange={(e) => setResultData({ ...resultData, result: e.target.value })}
+                  placeholder="Enter test result"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={resultData.notes}
+                  onChange={(e) => setResultData({ ...resultData, notes: e.target.value })}
+                  placeholder="Additional notes about the result"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={submitTestResult} className="flex-1">
+                  Submit Result
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setResultDialogOpen(false);
+                    setSelectedOrderItem(null);
+                    setResultData({ result: '', notes: '' });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="result">Result *</Label>
-              <Textarea
-                id="result"
-                value={resultFormData.result}
-                onChange={(e) => setResultFormData({ result: e.target.value })}
-                placeholder="Enter test result"
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full">
-              Submit Result
-            </Button>
-          </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

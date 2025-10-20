@@ -5,79 +5,83 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Package, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Package, User, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
-type Medication = Database['public']['Tables']['medications']['Row'];
-type MedicationStock = Database['public']['Tables']['medication_stock']['Row'] & {
-  medications: { medication_name: string } | null;
+type Prescription = Database['public']['Tables']['prescriptions']['Row'] & {
+  visits: { 
+    visit_date: string;
+    patients: { first_name: string; last_name: string; medical_id: string } | null;
+  } | null;
+};
+
+type Patient = Database['public']['Tables']['patients']['Row'];
+type Visit = Database['public']['Tables']['visits']['Row'] & {
+  patients: { first_name: string; last_name: string; medical_id: string } | null;
 };
 
 export default function PharmacyPage() {
-  const { profile } = useAuth();
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [stockBatches, setStockBatches] = useState<MedicationStock[]>([]);
+  const { profile, user, loading: authLoading } = useAuth();
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [medicationDialogOpen, setMedicationDialogOpen] = useState(false);
-  const [stockDialogOpen, setStockDialogOpen] = useState(false);
-  const [medicationFormData, setMedicationFormData] = useState({
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    visit_id: '',
+    patient_id: '',
     medication_name: '',
-    generic_name: '',
-    brand_name: '',
-    category: '',
-    unit: 'Tablet' as 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Cream' | 'Drop' | 'Inhaler',
-    description: '',
-    reorder_level: 10,
-  });
-  const [stockFormData, setStockFormData] = useState({
-    medication_id: '',
-    batch_number: '',
-    quantity: '',
-    unit_price: '',
-    selling_price: '',
-    expiry_date: '',
-    supplier: '',
+    dosage: '',
+    frequency: '',
+    duration: '',
+    instructions: '',
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading && user && profile) {
+      loadData();
+    }
+  }, [authLoading, user, profile]);
 
   async function loadData() {
     try {
-      const [medicationsResult, stockResult] = await Promise.all([
-        supabase.from('medications').select('*').order('medication_name'),
+      const [prescriptionsResult, patientsResult, visitsResult] = await Promise.all([
         supabase
-          .from('medication_stock')
+          .from('prescriptions')
           .select(`
             *,
-            medications(medication_name)
+            visits(
+              visit_date,
+              patients(first_name, last_name, medical_id)
+            )
           `)
-          .order('expiry_date'),
+          .order('created_at', { ascending: false }),
+        supabase.from('patients').select('*').order('first_name'),
+        supabase
+          .from('visits')
+          .select(`
+            *,
+            patients(first_name, last_name, medical_id)
+          `)
+          .order('visit_date', { ascending: false }),
       ]);
 
-      if (medicationsResult.error) throw medicationsResult.error;
-      if (stockResult.error) throw stockResult.error;
+      if (prescriptionsResult.error) throw prescriptionsResult.error;
+      if (patientsResult.error) throw patientsResult.error;
+      if (visitsResult.error) throw visitsResult.error;
 
-      setMedications(medicationsResult.data || []);
-      setStockBatches(stockResult.data || []);
+      setPrescriptions(prescriptionsResult.data || []);
+      setPatients(patientsResult.data || []);
+      setVisits(visitsResult.data || []);
     } catch (error: any) {
       toast.error('Failed to load data');
     } finally {
@@ -85,74 +89,57 @@ export default function PharmacyPage() {
     }
   }
 
-  async function handleMedicationSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { error } = await supabase.from('medications').insert(medicationFormData);
+      if (!user || !profile?.id) {
+        toast.error('User not authenticated. Please log in again.');
+        return;
+      }
+
+      const selectedVisit = visits.find(v => v.id === formData.visit_id);
+      if (!selectedVisit) {
+        toast.error('Please select a valid visit');
+        return;
+      }
+
+      const { error } = await supabase.from('prescriptions').insert({
+        visit_id: formData.visit_id,
+        patient_id: selectedVisit.patient_id,
+        medication_name: formData.medication_name,
+        dosage: formData.dosage,
+        frequency: formData.frequency,
+        duration: formData.duration,
+        instructions: formData.instructions,
+      });
 
       if (error) throw error;
 
-      toast.success('Medication added successfully');
-      setMedicationDialogOpen(false);
-      setMedicationFormData({
+      toast.success('Prescription created successfully');
+      setDialogOpen(false);
+      setFormData({
+        visit_id: '',
+        patient_id: '',
         medication_name: '',
-        generic_name: '',
-        brand_name: '',
-        category: '',
-        unit: 'Tablet',
-        description: '',
-        reorder_level: 10,
+        dosage: '',
+        frequency: '',
+        duration: '',
+        instructions: '',
       });
       loadData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to add medication');
+      toast.error(error.message || 'Failed to create prescription');
     }
   }
 
-  async function handleStockSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      if (!profile?.id) throw new Error('User not authenticated');
+  const filteredPrescriptions = prescriptions.filter((prescription) =>
+    prescription.medication_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    prescription.visits?.patients?.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    prescription.visits?.patients?.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    prescription.visits?.patients?.medical_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-      const { error } = await supabase.from('medication_stock').insert({
-        medication_id: stockFormData.medication_id,
-        batch_number: stockFormData.batch_number,
-        quantity: parseInt(stockFormData.quantity),
-        unit_price: parseFloat(stockFormData.unit_price),
-        selling_price: parseFloat(stockFormData.selling_price),
-        expiry_date: stockFormData.expiry_date,
-        supplier: stockFormData.supplier,
-        received_by: profile.id,
-      });
-
-      if (error) throw error;
-
-      await supabase.from('stock_transactions').insert({
-        medication_id: stockFormData.medication_id,
-        transaction_type: 'Purchase',
-        quantity: parseInt(stockFormData.quantity),
-        notes: `Batch: ${stockFormData.batch_number}`,
-        performed_by: profile.id,
-      });
-
-      toast.success('Stock added successfully');
-      setStockDialogOpen(false);
-      setStockFormData({
-        medication_id: '',
-        batch_number: '',
-        quantity: '',
-        unit_price: '',
-        selling_price: '',
-        expiry_date: '',
-        supplier: '',
-      });
-      loadData();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to add stock');
-    }
-  }
-
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -160,402 +147,237 @@ export default function PharmacyPage() {
     );
   }
 
-  const lowStockMedications = medications.filter((med) => {
-    const totalStock = stockBatches
-      .filter((stock) => stock.medication_id === med.id)
-      .reduce((sum, stock) => sum + stock.quantity, 0);
-    return totalStock < med.reorder_level;
-  });
-
-  const expiringStock = stockBatches.filter((stock) => {
-    const daysToExpiry = Math.ceil(
-      (new Date(stock.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+  if (!user || !profile) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600">Please log in to access this page.</p>
+        </div>
+      </div>
     );
-    return daysToExpiry <= 90 && daysToExpiry > 0;
-  });
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Pharmacy & Inventory</h1>
-          <p className="text-slate-600 mt-1">Manage medications and stock levels</p>
+          <h1 className="text-3xl font-bold text-slate-900">Pharmacy Management</h1>
+          <p className="text-slate-600 mt-1">Manage patient prescriptions and medication orders</p>
         </div>
-        <div className="flex gap-2">
-          <Dialog open={medicationDialogOpen} onOpenChange={setMedicationDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Medication
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add New Medication</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleMedicationSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="medication_name">Medication Name *</Label>
-                    <Input
-                      id="medication_name"
-                      value={medicationFormData.medication_name}
-                      onChange={(e) =>
-                        setMedicationFormData({ ...medicationFormData, medication_name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="generic_name">Generic Name</Label>
-                    <Input
-                      id="generic_name"
-                      value={medicationFormData.generic_name}
-                      onChange={(e) =>
-                        setMedicationFormData({ ...medicationFormData, generic_name: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Prescription
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create New Prescription</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="visit_id">Select Visit *</Label>
+                <Select
+                  value={formData.visit_id}
+                  onValueChange={(value) => {
+                    const selectedVisit = visits.find(v => v.id === value);
+                    setFormData({ 
+                      ...formData, 
+                      visit_id: value,
+                      patient_id: selectedVisit?.patient_id || ''
+                    });
+                  }}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a visit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visits.map((visit) => (
+                      <SelectItem key={visit.id} value={visit.id}>
+                        {visit.patients?.first_name} {visit.patients?.last_name} - {visit.patients?.medical_id} 
+                        ({format(new Date(visit.visit_date), 'MMM dd, yyyy')})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="brand_name">Brand Name</Label>
-                    <Input
-                      id="brand_name"
-                      value={medicationFormData.brand_name}
-                      onChange={(e) => setMedicationFormData({ ...medicationFormData, brand_name: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Category</Label>
-                    <Input
-                      id="category"
-                      value={medicationFormData.category}
-                      onChange={(e) => setMedicationFormData({ ...medicationFormData, category: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="unit">Unit *</Label>
-                    <Select
-                      value={medicationFormData.unit}
-                      onValueChange={(value: any) => setMedicationFormData({ ...medicationFormData, unit: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Tablet">Tablet</SelectItem>
-                        <SelectItem value="Capsule">Capsule</SelectItem>
-                        <SelectItem value="Syrup">Syrup</SelectItem>
-                        <SelectItem value="Injection">Injection</SelectItem>
-                        <SelectItem value="Cream">Cream</SelectItem>
-                        <SelectItem value="Drop">Drop</SelectItem>
-                        <SelectItem value="Inhaler">Inhaler</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reorder_level">Reorder Level</Label>
-                    <Input
-                      id="reorder_level"
-                      type="number"
-                      value={medicationFormData.reorder_level}
-                      onChange={(e) =>
-                        setMedicationFormData({ ...medicationFormData, reorder_level: parseInt(e.target.value) || 10 })
-                      }
-                    />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={medicationFormData.description}
-                    onChange={(e) => setMedicationFormData({ ...medicationFormData, description: e.target.value })}
+                  <Label htmlFor="medication_name">Medication Name *</Label>
+                  <Input
+                    id="medication_name"
+                    value={formData.medication_name}
+                    onChange={(e) => setFormData({ ...formData, medication_name: e.target.value })}
+                    placeholder="e.g., Amoxicillin"
+                    required
                   />
                 </div>
-
-                <Button type="submit" className="w-full">
-                  Add Medication
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Stock
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add Stock Batch</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleStockSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="medication_id">Medication *</Label>
+                  <Label htmlFor="dosage">Dosage *</Label>
+                  <Input
+                    id="dosage"
+                    value={formData.dosage}
+                    onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
+                    placeholder="e.g., 500mg"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="frequency">Frequency *</Label>
                   <Select
-                    value={stockFormData.medication_id}
-                    onValueChange={(value) => setStockFormData({ ...stockFormData, medication_id: value })}
+                    value={formData.frequency}
+                    onValueChange={(value) => setFormData({ ...formData, frequency: value })}
                     required
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select medication" />
+                      <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
                     <SelectContent>
-                      {medications.map((med) => (
-                        <SelectItem key={med.id} value={med.id}>
-                          {med.medication_name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="Once daily">Once daily</SelectItem>
+                      <SelectItem value="Twice daily">Twice daily</SelectItem>
+                      <SelectItem value="Three times daily">Three times daily</SelectItem>
+                      <SelectItem value="Four times daily">Four times daily</SelectItem>
+                      <SelectItem value="Every 6 hours">Every 6 hours</SelectItem>
+                      <SelectItem value="Every 8 hours">Every 8 hours</SelectItem>
+                      <SelectItem value="Every 12 hours">Every 12 hours</SelectItem>
+                      <SelectItem value="As needed">As needed</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="batch_number">Batch Number *</Label>
-                    <Input
-                      id="batch_number"
-                      value={stockFormData.batch_number}
-                      onChange={(e) => setStockFormData({ ...stockFormData, batch_number: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="quantity">Quantity *</Label>
-                    <Input
-                      id="quantity"
-                      type="number"
-                      min="1"
-                      value={stockFormData.quantity}
-                      onChange={(e) => setStockFormData({ ...stockFormData, quantity: e.target.value })}
-                      required
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="duration">Duration *</Label>
+                  <Select
+                    value={formData.duration}
+                    onValueChange={(value) => setFormData({ ...formData, duration: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select duration" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3 days">3 days</SelectItem>
+                      <SelectItem value="5 days">5 days</SelectItem>
+                      <SelectItem value="7 days">7 days</SelectItem>
+                      <SelectItem value="10 days">10 days</SelectItem>
+                      <SelectItem value="14 days">14 days</SelectItem>
+                      <SelectItem value="21 days">21 days</SelectItem>
+                      <SelectItem value="30 days">30 days</SelectItem>
+                      <SelectItem value="As needed">As needed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="unit_price">Unit Price *</Label>
-                    <Input
-                      id="unit_price"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={stockFormData.unit_price}
-                      onChange={(e) => setStockFormData({ ...stockFormData, unit_price: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="selling_price">Selling Price *</Label>
-                    <Input
-                      id="selling_price"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={stockFormData.selling_price}
-                      onChange={(e) => setStockFormData({ ...stockFormData, selling_price: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="instructions">Instructions</Label>
+                <Textarea
+                  id="instructions"
+                  value={formData.instructions}
+                  onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
+                  placeholder="e.g., Take with food, avoid alcohol, etc."
+                  rows={3}
+                />
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="expiry_date">Expiry Date *</Label>
-                    <Input
-                      id="expiry_date"
-                      type="date"
-                      value={stockFormData.expiry_date}
-                      onChange={(e) => setStockFormData({ ...stockFormData, expiry_date: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="supplier">Supplier</Label>
-                    <Input
-                      id="supplier"
-                      value={stockFormData.supplier}
-                      onChange={(e) => setStockFormData({ ...stockFormData, supplier: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <Button type="submit" className="w-full">
-                  Add Stock
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+              <Button type="submit" className="w-full">
+                Create Prescription
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {(lowStockMedications.length > 0 || expiringStock.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {lowStockMedications.length > 0 && (
-            <Card className="border-l-4 border-l-red-500">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-700">
-                  <AlertTriangle className="h-5 w-5" />
-                  Low Stock Alert
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm">
-                  {lowStockMedications.slice(0, 5).map((med) => (
-                    <li key={med.id} className="flex items-center gap-2">
-                      <div className="h-2 w-2 bg-red-500 rounded-full"></div>
-                      {med.medication_name}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {expiringStock.length > 0 && (
-            <Card className="border-l-4 border-l-amber-500">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-700">
-                  <AlertTriangle className="h-5 w-5" />
-                  Expiring Soon
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm">
-                  {expiringStock.slice(0, 5).map((stock) => (
-                    <li key={stock.id} className="flex items-center gap-2">
-                      <div className="h-2 w-2 bg-amber-500 rounded-full"></div>
-                      {stock.medications?.medication_name} - Batch {stock.batch_number}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      <Tabs defaultValue="medications">
-        <TabsList>
-          <TabsTrigger value="medications">Medications</TabsTrigger>
-          <TabsTrigger value="stock">Stock Batches</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="medications">
-          <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Medication Name</TableHead>
-                    <TableHead>Generic Name</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Total Stock</TableHead>
-                    <TableHead>Reorder Level</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {medications.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-slate-500 py-8">
-                        <Package className="h-12 w-12 mx-auto mb-2 text-slate-300" />
-                        No medications found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    medications.map((med) => {
-                      const totalStock = stockBatches
-                        .filter((stock) => stock.medication_id === med.id)
-                        .reduce((sum, stock) => sum + stock.quantity, 0);
-                      const isLowStock = totalStock < med.reorder_level;
-
-                      return (
-                        <TableRow key={med.id}>
-                          <TableCell className="font-medium">{med.medication_name}</TableCell>
-                          <TableCell>{med.generic_name || '-'}</TableCell>
-                          <TableCell>{med.unit}</TableCell>
-                          <TableCell>{totalStock}</TableCell>
-                          <TableCell>{med.reorder_level}</TableCell>
-                          <TableCell>
-                            {isLowStock ? (
-                              <Badge variant="destructive">Low Stock</Badge>
-                            ) : (
-                              <Badge variant="secondary">In Stock</Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="stock">
-          <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Medication</TableHead>
-                    <TableHead>Batch Number</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Expiry Date</TableHead>
-                    <TableHead>Supplier</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stockBatches.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-slate-500 py-8">
-                        <Package className="h-12 w-12 mx-auto mb-2 text-slate-300" />
-                        No stock batches found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    stockBatches.map((stock) => {
-                      const daysToExpiry = Math.ceil(
-                        (new Date(stock.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-                      );
-                      const isExpiringSoon = daysToExpiry <= 90 && daysToExpiry > 0;
-
-                      return (
-                        <TableRow key={stock.id} className={isExpiringSoon ? 'bg-amber-50' : ''}>
-                          <TableCell className="font-medium">{stock.medications?.medication_name}</TableCell>
-                          <TableCell>{stock.batch_number}</TableCell>
-                          <TableCell>{stock.quantity}</TableCell>
-                          <TableCell>
-                            {format(new Date(stock.expiry_date), 'MMM dd, yyyy')}
-                            {isExpiringSoon && (
-                              <Badge variant="outline" className="ml-2 text-amber-700 border-amber-300">
-                                Expiring Soon
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{stock.supplier || '-'}</TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search prescriptions by medication, patient name, or medical ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {filteredPrescriptions.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                <p className="text-slate-500">No prescriptions found</p>
+              </div>
+            ) : (
+              filteredPrescriptions.map((prescription) => (
+                <Card key={prescription.id} className="border-l-4 border-l-blue-500">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Package className="h-5 w-5 text-blue-600" />
+                          {prescription.medication_name}
+                        </CardTitle>
+                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4" />
+                            {prescription.visits?.patients?.first_name} {prescription.visits?.patients?.last_name}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            {prescription.visits?.patients?.medical_id}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">
+                        {format(new Date(prescription.created_at), 'MMM dd, yyyy')}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Dosage:</span>
+                        <p className="text-slate-900">{prescription.dosage}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Frequency:</span>
+                        <p className="text-slate-900">{prescription.frequency}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Duration:</span>
+                        <p className="text-slate-900">{prescription.duration}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Visit Date:</span>
+                        <p className="text-slate-900">
+                          {prescription.visits?.visit_date ? 
+                            format(new Date(prescription.visits.visit_date), 'MMM dd, yyyy') : 
+                            'N/A'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    {prescription.instructions && (
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Instructions:</span>
+                        <p className="text-slate-700 mt-1">{prescription.instructions}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

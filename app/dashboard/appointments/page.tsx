@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -24,11 +25,15 @@ type Patient = Database['public']['Tables']['patients']['Row'];
 type Doctor = { id: string; full_name: string };
 
 export default function AppointmentsPage() {
+  const { profile, user, loading: authLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('all');
   const [formData, setFormData] = useState({
     patient_id: '',
     doctor_id: '',
@@ -39,8 +44,10 @@ export default function AppointmentsPage() {
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading && user && profile) {
+      loadData();
+    }
+  }, [authLoading, user, profile]);
 
   async function loadData() {
     try {
@@ -122,13 +129,56 @@ export default function AppointmentsPage() {
     }
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
+
+  if (!user || !profile) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600">Please log in to access this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const filteredAppointments = appointments.filter((appointment) => {
+    const matchesSearch = 
+      appointment.patients?.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      appointment.patients?.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      appointment.patients?.medical_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      appointment.reason?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || appointment.status === statusFilter;
+    
+    const appointmentDate = new Date(appointment.appointment_date);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextWeek = new Date(today);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    
+    let matchesDate = true;
+    if (dateFilter === 'today') {
+      matchesDate = appointmentDate.toDateString() === today.toDateString();
+    } else if (dateFilter === 'tomorrow') {
+      matchesDate = appointmentDate.toDateString() === tomorrow.toDateString();
+    } else if (dateFilter === 'this_week') {
+      matchesDate = appointmentDate >= today && appointmentDate <= nextWeek;
+    } else if (dateFilter === 'past') {
+      matchesDate = appointmentDate < today;
+    } else if (dateFilter === 'future') {
+      matchesDate = appointmentDate >= today;
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate;
+  });
 
   const upcomingAppointments = appointments.filter(
     (a) => a.status === 'Scheduled' && new Date(a.appointment_date) >= new Date()
@@ -245,16 +295,54 @@ export default function AppointmentsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4">
-        {appointments.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-              <p className="text-slate-500">No appointments scheduled</p>
-            </CardContent>
-          </Card>
-        ) : (
-          appointments.map((appointment) => {
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search appointments by patient name, medical ID, or reason..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Scheduled">Scheduled</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+                <SelectItem value="No Show">No Show</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Filter by date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="tomorrow">Tomorrow</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="future">Future</SelectItem>
+                <SelectItem value="past">Past</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {filteredAppointments.length === 0 ? (
+              <div className="text-center py-12">
+                <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                <p className="text-slate-500">No appointments found</p>
+              </div>
+            ) : (
+              filteredAppointments.map((appointment) => {
             const appointmentDate = new Date(appointment.appointment_date);
             const isPast = appointmentDate < new Date();
 
@@ -323,9 +411,11 @@ export default function AppointmentsPage() {
                 </CardContent>
               </Card>
             );
-          })
-        )}
-      </div>
+              })
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

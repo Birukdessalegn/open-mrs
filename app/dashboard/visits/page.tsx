@@ -23,7 +23,7 @@ type Visit = Database['public']['Tables']['visits']['Row'] & {
 type Patient = Database['public']['Tables']['patients']['Row'];
 
 export default function VisitsPage() {
-  const { profile } = useAuth();
+  const { profile, user, loading: authLoading } = useAuth();
   const [visits, setVisits] = useState<Visit[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,8 +44,10 @@ export default function VisitsPage() {
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading && user && profile) {
+      loadData();
+    }
+  }, [authLoading, user, profile]);
 
   async function loadData() {
     try {
@@ -76,7 +78,10 @@ export default function VisitsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      if (!profile?.id) throw new Error('User not authenticated');
+      if (!user || !profile?.id) {
+        toast.error('User not authenticated. Please log in again.');
+        return;
+      }
 
       const { error } = await supabase.from('visits').insert({
         patient_id: formData.patient_id,
@@ -112,10 +117,21 @@ export default function VisitsPage() {
     }
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!user || !profile) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600">Please log in to access this page.</p>
+        </div>
       </div>
     );
   }
