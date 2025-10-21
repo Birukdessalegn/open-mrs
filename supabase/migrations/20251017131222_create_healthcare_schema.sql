@@ -261,7 +261,6 @@ CREATE TABLE IF NOT EXISTS visits (
   updated_at timestamptz DEFAULT now()
 );
 
--- Create prescriptions table
 CREATE TABLE IF NOT EXISTS prescriptions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   visit_id uuid REFERENCES visits ON DELETE CASCADE NOT NULL,
