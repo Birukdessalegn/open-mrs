@@ -198,7 +198,7 @@ export default function PharmacyPage() {
                     {visits.map((visit) => (
                       <SelectItem key={visit.id} value={visit.id}>
                         {visit.patients?.first_name} {visit.patients?.last_name} - {visit.patients?.medical_id} 
-                        ({format(new Date(visit.visit_date), 'MMM dd, yyyy')})
+                        ({format(new Date(visit.visit_date), 'MMM dd, yyyy' ?? '')})
                       </SelectItem>
                     ))}
                   </SelectContent>
