@@ -273,7 +273,7 @@ export default function LabOrdersPage() {
                     <SelectContent>
                       {filteredVisits.map((visit) => (
                         <SelectItem key={visit.id} value={visit.id}>
-                          {format(new Date(visit.visit_date ?? ''), 'MMM dd, yyyy')}
+                          {visit.visit_date ? format(new Date(visit.visit_date), 'MMM dd, yyyy') : 'N/A'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -385,7 +385,7 @@ export default function LabOrdersPage() {
                           {order.status}
                         </Badge>
                         <span className="text-sm text-slate-500">
-                          {format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}
+                          {order.order_date ? format(new Date(order.order_date), 'MMM dd, yyyy') : 'N/A'}
                         </span>
                       </div>
                     </div>

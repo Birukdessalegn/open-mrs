@@ -251,9 +251,9 @@ export default function LaboratoryPage() {
                       <div className="flex items-center gap-2">
                         <Badge className={getStatusColor(order.status ?? '')}>
                          {getStatusIcon(order.status ?? '')}
-                          <span className="text-sm text-slate-500"> {format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}</span>
+                          <span className="text-sm text-slate-500"> {order.order_date ? format(new Date(order.order_date), 'MMM dd, yyyy') : 'N/A'}</span>
                         </Badge>
-                         <span className="text-sm text-slate-500"> {format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}</span>
+                          <span className="text-sm text-slate-500"> {order.order_date ? format(new Date(order.order_date), 'MMM dd, yyyy') : 'N/A'}</span>
                       </div>
                     </div>
                   </CardHeader>
