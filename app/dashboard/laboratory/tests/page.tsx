@@ -146,7 +146,7 @@ export default function LabTestsPage() {
       description: test.description || '',
       price: test.price.toString(),
       normal_range: test.normal_range || '',
-      active: test.active,
+      active: test.active ?? false,
     });
     setDialogOpen(true);
   }
