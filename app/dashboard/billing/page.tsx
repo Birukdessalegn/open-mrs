@@ -457,7 +457,7 @@ export default function BillingPage() {
                         <div className="text-right">
                           <p className="font-bold text-lg">${(invoice.total_amount ?? 0).toFixed(2)}</p>
                           <p className="text-sm text-slate-500">
-                            Paid: ${invoice.amount_paid.toFixed(2)}
+                            Paid: ${(invoice.amount_paid ?? 0).toFixed(2)}
                           </p>
                         </div>
                       </div>
