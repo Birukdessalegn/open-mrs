@@ -253,9 +253,7 @@ export default function LaboratoryPage() {
                          {getStatusIcon(order.status ?? '')}
                           <span className="text-sm text-slate-500"> {format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}</span>
                         </Badge>
-                        <span className="text-sm text-slate-500">
-                          {format(new Date(order.order_date), 'MMM dd, yyyy' ?? '')}
-                        </span>
+                         <span className="text-sm text-slate-500"> {format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}</span>
                       </div>
                     </div>
                   </CardHeader>
