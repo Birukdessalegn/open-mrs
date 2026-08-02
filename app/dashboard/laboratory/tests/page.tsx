@@ -373,7 +373,7 @@ export default function LabTestsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => toggleTestStatus(test.id, test.active)}
+                          onClick={() => toggleTestStatus(test.id, test.active ?? false)}
                         >
                           {test.active ? 'Deactivate' : 'Activate'}
                         </Button>
