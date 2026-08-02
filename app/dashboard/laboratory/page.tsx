@@ -249,7 +249,7 @@ export default function LaboratoryPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge className={getStatusColor(order.status)}>
+                        <Badge className={getStatusColor(order.status ?? '')}>
                           {getStatusIcon(order.status)}
                           <span className="ml-1">{order.status}</span>
                         </Badge>
