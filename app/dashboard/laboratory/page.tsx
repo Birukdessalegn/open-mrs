@@ -254,7 +254,7 @@ export default function LaboratoryPage() {
                           <span className="ml-1">{order.status}</span>
                         </Badge>
                         <span className="text-sm text-slate-500">
-                          {format(new Date(order.order_date), 'MMM dd, yyyy')}
+                          {format(new Date(order.order_date), 'MMM dd, yyyy' ?? '')}
                         </span>
                       </div>
                     </div>
