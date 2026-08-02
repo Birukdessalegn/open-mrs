@@ -442,7 +442,7 @@ export default function BillingPage() {
                             Medical ID: {invoice.patients?.medical_id}
                           </div>
                           <div>
-                            Date: {format(new Date(invoice.invoice_date), 'MMM dd, yyyy')}
+                            Date: {invoice.invoice_date ? format(new Date(invoice.invoice_date), 'MMM dd, yyyy') : 'N/A'}
                           </div>
                         </div>
                       </div>
