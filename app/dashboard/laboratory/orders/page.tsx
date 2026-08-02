@@ -273,7 +273,7 @@ export default function LabOrdersPage() {
                     <SelectContent>
                       {filteredVisits.map((visit) => (
                         <SelectItem key={visit.id} value={visit.id}>
-                          {format(new Date(visit.visit_date), 'MMM dd, yyyy')} - {visit.chief_complaint || 'No complaint'}
+                          {format(new Date(visit.visit_date ?? ''), 'MMM dd, yyyy')}
                         </SelectItem>
                       ))}
                     </SelectContent>
