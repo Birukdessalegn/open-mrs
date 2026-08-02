@@ -338,7 +338,7 @@ export default function LabTestsPage() {
                           <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
                             <span>Code: {test.test_code}</span>
                             <span>Price: ${test.price.toFixed(2)}</span>
-                            <span className="text-sm text-slate-500">{format(new Date(order.order_date ?? ''), 'MMM dd, yyyy')}</span>
+                            <span className="text-sm text-slate-500">{format(new Date(test.created_at ?? ''), 'MMM dd, yyyy')}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
