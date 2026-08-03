@@ -337,7 +337,7 @@ export default function PharmacyPage() {
                         </div>
                       </div>
                       <Badge variant="secondary">
-                        {format(new Date(prescription.created_at), 'MMM dd, yyyy')}
+                        {prescription.created_at ? format(new Date(prescription.created_at), 'MMM dd, yyyy') : 'N/A'}
                       </Badge>
                     </div>
                   </CardHeader>
