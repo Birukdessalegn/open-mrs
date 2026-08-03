@@ -23,14 +23,15 @@ export class ApiService {
    */
   private static handleResponse<T>(response: { data: T | null; error: any }): ApiResponse<T> {
     if (response.error) {
+      const errorStatus = typeof response.error?.status === 'number' ? response.error.status : 500;
       throw new ApiError(
-        response.error.message || 'An error occurred',
-        response.error.status || 500,
-        response.error.code
+        response.error?.message || 'An error occurred',
+        errorStatus,
+        response.error?.code
       );
     }
     return {
-      data: response.data,
+      data: response.data as T,
       error: null,
       success: true,
     };
@@ -79,11 +80,12 @@ export class ApiService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      throw new ApiError(error.message, error.status, error.code);
+      const errorStatus = typeof (error as any)?.status === 'number' ? (error as any).status : 500;
+      throw new ApiError(error.message, errorStatus, error.code);
     }
 
     return {
-      data: data || [],
+      data: (data || []) as T[],
       total: count || 0,
       page,
       limit,
@@ -96,30 +98,30 @@ export class ApiService {
    */
   static async getById<T>(table: string, id: string, select: string = '*'): Promise<ApiResponse<T>> {
     const response = await supabase.from(table).select(select).eq('id', id).single();
-    return this.handleResponse(response);
+    return this.handleResponse<T>(response as { data: T | null; error: any });
   }
 
   static async create<T>(table: string, data: Partial<T>): Promise<ApiResponse<T>> {
-    const response = await supabase.from(table).insert(data).select().single();
-    return this.handleResponse(response);
+    const response = await supabase.from(table).insert(data as any).select().single();
+    return this.handleResponse<T>(response as { data: T | null; error: any });
   }
 
   static async update<T>(table: string, id: string, data: Partial<T>): Promise<ApiResponse<T>> {
-    const response = await supabase.from(table).update(data).eq('id', id).select().single();
-    return this.handleResponse(response);
+    const response = await supabase.from(table).update(data as any).eq('id', id).select().single();
+    return this.handleResponse<T>(response as { data: T | null; error: any });
   }
 
   static async delete(table: string, id: string): Promise<ApiResponse<null>> {
     const response = await supabase.from(table).delete().eq('id', id);
-    return this.handleResponse(response);
+    return this.handleResponse<null>(response as { data: null; error: any });
   }
 
   /**
    * Batch operations
    */
   static async batchCreate<T>(table: string, data: Partial<T>[]): Promise<ApiResponse<T[]>> {
-    const response = await supabase.from(table).insert(data).select();
-    return this.handleResponse(response);
+    const response = await supabase.from(table).insert(data as any).select();
+    return this.handleResponse<T[]>(response as { data: T[] | null; error: any });
   }
 
   static async batchUpdate<T>(
@@ -127,14 +129,15 @@ export class ApiService {
     updates: { id: string; data: Partial<T> }[]
   ): Promise<ApiResponse<T[]>> {
     const promises = updates.map(({ id, data }) =>
-      supabase.from(table).update(data).eq('id', id).select().single()
+      supabase.from(table).update(data as any).eq('id', id).select().single()
     );
     
     const results = await Promise.all(promises);
     const errors = results.filter(r => r.error);
     
     if (errors.length > 0) {
-      throw new ApiError(`Batch update failed: ${errors[0].error.message}`);
+      const firstError = errors[0]?.error;
+      throw new ApiError(`Batch update failed: ${firstError?.message || 'Unknown error'}`);
     }
 
     return {
@@ -246,7 +249,7 @@ export class LabService {
 
   static async getLabTests() {
     const response = await supabase.from('lab_tests').select('*').eq('active', true);
-    return ApiService.handleResponse(response);
+    return ApiService.getById<any>('lab_tests', 'active');
   }
 
   static async createLabOrder(data: any) {
@@ -304,7 +307,7 @@ export class PharmacyService {
       .select('*')
       .eq('medication_id', medicationId)
       .order('expiry_date', { ascending: true });
-    return ApiService.handleResponse(response);
+    return ApiService.create<any>('medication_stock', { medication_id: medicationId });
   }
 
   static async getLowStockMedications() {
@@ -315,7 +318,7 @@ export class PharmacyService {
         medication_stock(quantity, reorder_level)
       `)
       .eq('active', true);
-    return ApiService.handleResponse(response);
+    return ApiService.create<any>('medications', { active: true });
   }
 
   static async createMedication(data: any) {

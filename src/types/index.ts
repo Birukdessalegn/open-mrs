@@ -96,4 +96,4 @@ export interface Notification {
 }
 
 // Export all database types
-export * from '../lib/database.types';
+export * from '../../lib/database.types';
