@@ -278,7 +278,7 @@ export default function QueueManagementPage() {
     return matchesSearch && matchesQueueType && matchesStatus;
   });
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string | null | undefined) => {
     switch (status) {
       case 'Waiting':
         return <Clock className="h-4 w-4 text-orange-600" />;
@@ -295,7 +295,18 @@ export default function QueueManagementPage() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const isSameDay = (value: string | null | undefined) => {
+    if (!value) return false;
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return false;
+    }
+
+    return parsedDate.toDateString() === new Date().toDateString();
+  };
+
+  const getStatusColor = (status: string | null | undefined) => {
     switch (status) {
       case 'Waiting':
         return 'bg-orange-100 text-orange-800';
@@ -312,7 +323,7 @@ export default function QueueManagementPage() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: string | null | undefined) => {
     switch (priority) {
       case 'High':
         return 'bg-red-100 text-red-800';
@@ -523,7 +534,7 @@ export default function QueueManagementPage() {
             <div className="text-2xl font-bold text-green-600">
               {queueEntries.filter(entry => 
                 entry.status === 'Completed' && 
-                new Date(entry.created_at).toDateString() === new Date().toDateString()
+                isSameDay(entry.created_at)
               ).length}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -569,7 +580,7 @@ export default function QueueManagementPage() {
                   <div className="flex items-center gap-3">
                     <div 
                       className="w-4 h-4 rounded-full" 
-                      style={{ backgroundColor: queueType.color }}
+                      style={{ backgroundColor: queueType.color ?? '#3b82f6' as string }}
                     ></div>
                     <CardTitle>{queueType.name}</CardTitle>
                     <Badge variant="outline">
@@ -611,12 +622,12 @@ export default function QueueManagementPage() {
                               {entry.patients?.medical_id}
                             </div>
                           </div>
-                          <Badge className={getPriorityColor(entry.priority)}>
-                            {entry.priority}
+                          <Badge className={getPriorityColor(entry.priority || 'Normal')}>
+                            {entry.priority || 'Normal'}
                           </Badge>
-                          <Badge className={getStatusColor(entry.status)}>
-                            {getStatusIcon(entry.status)}
-                            <span className="ml-1">{entry.status}</span>
+                          <Badge className={getStatusColor(entry.status || 'Waiting')}>
+                            {getStatusIcon(entry.status || 'Waiting')}
+                            <span className="ml-1">{entry.status || 'Waiting'}</span>
                           </Badge>
                         </div>
                         <div className="flex items-center gap-2">
@@ -722,20 +733,20 @@ export default function QueueManagementPage() {
                         <div className="flex items-center gap-2">
                           <div 
                             className="w-3 h-3 rounded-full" 
-                            style={{ backgroundColor: entry.queue_types?.color }}
+                            style={{ backgroundColor: (entry.queue_types?.color ?? '#3b82f6') as string }}
                           ></div>
                           {entry.queue_types?.name}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getPriorityColor(entry.priority)}>
-                          {entry.priority}
+                        <Badge className={getPriorityColor(entry.priority || 'Normal')}>
+                          {entry.priority || 'Normal'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(entry.status)}>
-                          {getStatusIcon(entry.status)}
-                          <span className="ml-1">{entry.status}</span>
+                        <Badge className={getStatusColor(entry.status || 'Waiting')}>
+                          {getStatusIcon(entry.status || 'Waiting')}
+                          <span className="ml-1">{entry.status || 'Waiting'}</span>
                         </Badge>
                       </TableCell>
                       <TableCell>

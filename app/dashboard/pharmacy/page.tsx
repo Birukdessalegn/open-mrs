@@ -28,6 +28,17 @@ type Visit = Database['public']['Tables']['visits']['Row'] & {
   patients: { first_name: string; last_name: string; medical_id: string } | null;
 };
 
+function formatDisplayDate(value: string | null | undefined) {
+  if (!value) return 'N/A';
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'N/A';
+  }
+
+  return format(parsedDate, 'MMM dd, yyyy');
+}
+
 export default function PharmacyPage() {
   const { profile, user, loading: authLoading } = useAuth();
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -337,7 +348,7 @@ export default function PharmacyPage() {
                         </div>
                       </div>
                       <Badge variant="secondary">
-                        {prescription.created_at ? format(new Date(prescription.created_at), 'MMM dd, yyyy') : 'N/A'}
+                        {formatDisplayDate(prescription.created_at)}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -358,10 +369,7 @@ export default function PharmacyPage() {
                       <div>
                         <span className="text-sm font-medium text-slate-600">Visit Date:</span>
                         <p className="text-slate-900">
-                          {prescription.visits?.visit_date ? 
-                            format(new Date(prescription.visits.visit_date), 'MMM dd, yyyy') : 
-                            'N/A'
-                          }
+                          {formatDisplayDate(prescription.visits?.visit_date)}
                         </p>
                       </div>
                     </div>

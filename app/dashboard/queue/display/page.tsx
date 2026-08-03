@@ -148,6 +148,7 @@ export default function QueueDisplayPage() {
           const waitingCount = queueEntries.filter(entry => 
             entry.queue_type_id === queueType.id && entry.status === 'Waiting'
           ).length;
+          const badgeColor = queueType.color || '#3b82f6';
 
           return (
             <Card key={queueType.id} className="shadow-lg">
@@ -156,7 +157,7 @@ export default function QueueDisplayPage() {
                   <div className="flex items-center gap-3">
                     <div 
                       className="w-6 h-6 rounded-full shadow-sm" 
-                      style={{ backgroundColor: queueType.color }}
+                      style={{ backgroundColor: badgeColor }}
                     ></div>
                     <CardTitle className="text-xl">{queueType.name}</CardTitle>
                   </div>

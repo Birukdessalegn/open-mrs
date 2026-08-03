@@ -22,6 +22,17 @@ type Visit = Database['public']['Tables']['visits']['Row'] & {
 
 type Patient = Database['public']['Tables']['patients']['Row'];
 
+function formatVisitDate(value: string | null | undefined) {
+  if (!value) return 'N/A';
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'N/A';
+  }
+
+  return format(parsedDate, 'MMM dd, yyyy HH:mm');
+}
+
 export default function VisitsPage() {
   const { profile, user, loading: authLoading } = useAuth();
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -324,7 +335,7 @@ export default function VisitsPage() {
                     </p>
                   </div>
                   <div className="text-right text-sm text-slate-600">
-                    {format(new Date(visit.visit_date), 'MMM dd, yyyy HH:mm')}
+                    {formatVisitDate(visit.visit_date)}
                   </div>
                 </div>
               </CardHeader>

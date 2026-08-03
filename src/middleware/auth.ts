@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
-import { appConfig, hasPermission } from '../config/app';
+import { hasPermission } from '../config/app';
+import { supabase as supabaseClient } from '@/lib/supabase';
 
 // Define route permissions
 const routePermissions: Record<string, string[]> = {
@@ -54,7 +54,7 @@ export async function authMiddleware(request: NextRequest) {
   
   try {
     // Create Supabase client
-    const supabase = createMiddlewareClient({ req: request, res: NextResponse.next() });
+    const supabase = supabaseClient;
     
     // Get session
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -103,7 +103,7 @@ export async function apiAuthMiddleware(request: NextRequest) {
   
   try {
     // Create Supabase client
-    const supabase = createMiddlewareClient({ req: request, res: NextResponse.next() });
+    const supabase = supabaseClient;
     
     // Get session
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -180,7 +180,7 @@ export function withAuth(
 ) {
   return async (request: NextRequest, context: any) => {
     try {
-      const supabase = createMiddlewareClient({ req: request, res: NextResponse.next() });
+      const supabase = supabaseClient;
       
       const { data: { session }, error } = await supabase.auth.getSession();
       

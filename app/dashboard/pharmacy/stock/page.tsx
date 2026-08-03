@@ -73,7 +73,7 @@ export default function StockManagementPage() {
         console.log('Pharmacy stock table not found, using sample data');
         setStockItems([]);
       } else {
-        const stockItems = stockResult.data?.map(item => ({
+        const mappedStockItems: StockItem[] = (stockResult.data?.map((item): StockItem => ({
           id: item.id,
           medication_id: item.medication_id,
           medication_name: item.medications?.medication_name || 'Unknown',
@@ -83,8 +83,8 @@ export default function StockManagementPage() {
           last_updated: item.updated_at,
           status: item.current_stock <= 0 ? 'Out of Stock' : 
                   item.current_stock <= item.minimum_stock ? 'Low Stock' : 'In Stock'
-        })) || [];
-        setStockItems(stockItems);
+        })) || []);
+        setStockItems(mappedStockItems);
       }
 
       setMedications(medicationsResult.data || []);

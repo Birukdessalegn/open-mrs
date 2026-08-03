@@ -20,6 +20,17 @@ type Prescription = Database['public']['Tables']['prescriptions']['Row'] & {
   } | null;
 };
 
+function formatDisplayDate(value: string | null | undefined) {
+  if (!value) return 'N/A';
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'N/A';
+  }
+
+  return format(parsedDate, 'MMM dd, yyyy');
+}
+
 export default function PharmacistPrescriptionsPage() {
   const { profile, user, loading: authLoading } = useAuth();
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -262,7 +273,7 @@ export default function PharmacistPrescriptionsPage() {
           </div>
           <div class="info-row">
             <span class="info-label">Visit Date:</span>
-            <span>${prescription.visits?.visit_date ? format(new Date(prescription.visits.visit_date), 'MMM dd, yyyy') : 'N/A'}</span>
+            <span>${formatDisplayDate(prescription.visits?.visit_date)}</span>
           </div>
         </div>
 
@@ -283,7 +294,7 @@ export default function PharmacistPrescriptionsPage() {
             </div>
             <div class="dosage-item">
               <div class="dosage-label">Prescribed Date</div>
-              <div class="dosage-value">${format(new Date(prescription.created_at), 'MMM dd, yyyy')}</div>
+              <div class="dosage-value">${formatDisplayDate(prescription.created_at)}</div>
             </div>
           </div>
         </div>
@@ -416,7 +427,7 @@ export default function PharmacistPrescriptionsPage() {
                           Pending
                         </Badge>
                         <span className="text-sm text-slate-500">
-                          {format(new Date(prescription.created_at), 'MMM dd, yyyy')}
+                          {formatDisplayDate(prescription.created_at)}
                         </span>
                       </div>
                     </div>
@@ -438,10 +449,7 @@ export default function PharmacistPrescriptionsPage() {
                       <div>
                         <span className="text-sm font-medium text-slate-600">Visit Date:</span>
                         <p className="text-slate-900">
-                          {prescription.visits?.visit_date ? 
-                            format(new Date(prescription.visits.visit_date), 'MMM dd, yyyy') : 
-                            'N/A'
-                          }
+                          {formatDisplayDate(prescription.visits?.visit_date)}
                         </p>
                       </div>
                     </div>
